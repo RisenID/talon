@@ -28,6 +28,7 @@ import { initPulse, resetPulseTimer } from "./core/background/pulse.js";
 import { initCron } from "./core/background/cron.js";
 import { initPlanAlerts } from "./core/background/plan-alerts.js";
 import { setAdminNotifier } from "./core/notify.js";
+import { startAuthExpiryMonitor } from "./core/auth/expiry-monitor.js";
 import {
   initTriggers,
   resumeAfterRestart as resumeTriggersAfterRestart,
@@ -486,16 +487,7 @@ export async function initBackendAndDispatcher(
   // first consumer is WhatsApp pairing: codes must travel over a LIVE
   // frontend, not the dead one's log). Same delivery route as the plan
   // alerts above.
-  if (config.adminUserId) {
-    const adminChatId = config.adminUserId;
-    setAdminNotifier(async (text: string) =>
-      resolveFrontendByNumericId(
-        adminChatId,
-        String(adminChatId),
-        frontends,
-      ).sendMessage(adminChatId, text),
-    );
-  }
+  wireAdminNotifier(config, frontends);
 
   // Soul — initialize the identity kernel singleton from config so the prompt
   // injection / dream hooks see the right enabled state. Off by default; a
@@ -585,4 +577,26 @@ export async function initBackendAndDispatcher(
   }
 
   return { backend };
+}
+
+/**
+ * Wire the admin notification seam to the admin's frontend, and start the
+ * login-expiry monitor that rides it: the CLIs' "N days to log in again"
+ * banner, delivered to the admin instead of a terminal nobody is watching
+ * (/auth then completes the sign-in from the chat).
+ */
+function wireAdminNotifier(
+  config: TalonConfig,
+  frontends: Parameters<typeof resolveFrontendByNumericId>[2],
+): void {
+  if (!config.adminUserId) return;
+  const adminChatId = config.adminUserId;
+  setAdminNotifier(async (text: string) =>
+    resolveFrontendByNumericId(
+      adminChatId,
+      String(adminChatId),
+      frontends,
+    ).sendMessage(adminChatId, text),
+  );
+  startAuthExpiryMonitor();
 }
