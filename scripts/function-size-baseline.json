@@ -1,11 +1,5 @@
 [
   {
-    "file": "src/backend/remote-server/model-catalog/presentation.ts",
-    "name": "createRemoteModelPresentation",
-    "lines": 256,
-    "cx": 61
-  },
-  {
     "file": "src/bootstrap.ts",
     "name": "initBackendAndDispatcher",
     "lines": 322,
