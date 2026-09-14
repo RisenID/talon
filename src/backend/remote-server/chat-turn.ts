@@ -45,6 +45,7 @@ export type RemoteChatBindings<TClient extends RemoteAgentClient> = Pick<
   RemoteServerBindings<TClient>,
   | "getConfig"
   | "ensureServer"
+  | "trackActiveTurn"
   | "parseModelSelection"
   | "resolveProviderID"
   | "ensureSession"
@@ -145,6 +146,11 @@ export async function runRemoteChatTurn<TClient extends RemoteAgentClient>(
     state.turnTerminated = true;
     await turnClient.session.abort({ sessionID: sessionId });
   });
+  // Stopping the backend mid-turn (a `/model` swap, shutdown) aborts this
+  // controller, which rejects the turn promptly instead of leaving it to
+  // the deadline.
+  const stopController = new AbortController();
+  const untrackTurn = bindings.trackActiveTurn(stopController);
   const promptStartedAt = Date.now();
 
   const setupMs = Date.now() - t0;
@@ -175,6 +181,7 @@ export async function runRemoteChatTurn<TClient extends RemoteAgentClient>(
       onStreamDelta: undefined,
       onTextBlock,
       onToolUse,
+      stopSignal: stopController.signal,
     });
     promptMs = Date.now() - turnStart;
   } catch (err) {
@@ -205,6 +212,7 @@ export async function runRemoteChatTurn<TClient extends RemoteAgentClient>(
     );
     throw outcome.classified;
   } finally {
+    untrackTurn();
     unregisterInterrupt();
     // Note: we deliberately do NOT disconnect the chat MCP server here.
     // The server is named per-chat so it's safe to keep across turns;
@@ -256,14 +264,16 @@ export async function runRemoteChatTurn<TClient extends RemoteAgentClient>(
 }
 
 /**
- * If the SSE loop missed any usage info, fall back to the session
- * summary endpoint (which always reflects the final server state).
+ * If the SSE loop missed the usage info, fall back to the session summary
+ * endpoint (which always reflects the final server state). Best-effort:
+ * session summaries can race on cancellation, so a failure leaves the
+ * counts at zero.
  */
 async function fillUsageFromSummary(
   oc: RemoteSessionClient,
   sessionId: string,
   promptStartedAt: number,
-  state: StreamState,
+  state: ReturnType<typeof createStreamState>,
 ): Promise<void> {
   if (
     state.sdkInputTokens !== 0 ||
