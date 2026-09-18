@@ -760,3 +760,84 @@ describe("teams actions — non-Error throw coverage", () => {
     expect(result?.error).toContain("500");
   });
 });
+
+// ── Test poll cut ───────────────────────────────────────────────────────────
+
+describe("teams poll selectNewMessages", () => {
+  const msg = (id: string) => ({
+    id,
+    text: id,
+    senderName: "u",
+    senderId: "s",
+    chatId: "c",
+    createdDateTime: "",
+    messageType: "message",
+    edited: false,
+  });
+
+  it("returns everything newer than the last seen id, newest first", async () => {
+    const { selectNewMessages } = await import("../frontend/teams/poll.js");
+    const fresh = selectNewMessages(
+      [msg("3"), msg("2"), msg("1"), msg("0")],
+      "1",
+    );
+    expect(fresh.map((m) => m.id)).toEqual(["3", "2"]);
+  });
+
+  it("treats no last seen id as everything new, and an unseen id as a miss", async () => {
+    const { selectNewMessages } = await import("../frontend/teams/poll.js");
+    expect(selectNewMessages([msg("b"), msg("a")], null)).toHaveLength(2);
+    expect(selectNewMessages([msg("b"), msg("a")], "zzz")).toHaveLength(2);
+    expect(selectNewMessages([msg("b"), msg("a")], "b")).toHaveLength(0);
+  });
+});
+
+// ── Test slash-command table ────────────────────────────────────────────────
+
+describe("teams slash-command table", () => {
+  it("has a null prototype and exactly the three commands", async () => {
+    const { TEAMS_COMMANDS } = await import("../frontend/teams/commands.js");
+    expect(Object.getPrototypeOf(TEAMS_COMMANDS)).toBeNull();
+    expect(Object.keys(TEAMS_COMMANDS).sort()).toEqual([
+      "/help",
+      "/reset",
+      "/status",
+    ]);
+    expect(TEAMS_COMMANDS["constructor"]).toBeUndefined();
+    expect(TEAMS_COMMANDS["toString"]).toBeUndefined();
+  });
+
+  it("answers /help through the webhook and reports the message as handled", async () => {
+    vi.resetModules();
+    const proxyFetch = vi.fn(async () => ({ ok: true, status: 200 }));
+    vi.doMock("../frontend/teams/proxy-fetch.js", () => ({ proxyFetch }));
+    const { handleSlashCommand } =
+      await import("../frontend/teams/commands.js");
+    const runtime = { webhookUrl: "https://webhook.example.com" } as never;
+    const msg = { text: "  /HELP ", senderName: "u" } as never;
+
+    expect(await handleSlashCommand(runtime, msg, "teams_chat_c")).toBe(true);
+    expect(proxyFetch).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(
+      (proxyFetch.mock.calls[0] as unknown as [string, { body: string }])[1]
+        .body,
+    );
+    expect(JSON.stringify(body)).toContain("/reset");
+  });
+
+  it("leaves non-commands and unknown slashes to the turn", async () => {
+    vi.resetModules();
+    const proxyFetch = vi.fn(async () => ({ ok: true, status: 200 }));
+    vi.doMock("../frontend/teams/proxy-fetch.js", () => ({ proxyFetch }));
+    const { handleSlashCommand } =
+      await import("../frontend/teams/commands.js");
+    const runtime = { webhookUrl: "https://webhook.example.com" } as never;
+    for (const text of ["hello", "/unknown", "/help me", "constructor"]) {
+      const msg = { text, senderName: "u" } as never;
+      expect(await handleSlashCommand(runtime, msg, "teams_chat_c")).toBe(
+        false,
+      );
+    }
+    expect(proxyFetch).not.toHaveBeenCalled();
+  });
+});
