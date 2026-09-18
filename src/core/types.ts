@@ -230,7 +230,7 @@ export type ExecuteParams = {
   isGroup: boolean;
   /** Provider message ID. Numeric for Telegram, string snowflake for Discord. */
   messageId?: number | string;
-  source: "message" | "pulse" | "cron" | "trigger";
+  source: "message" | "pulse" | "cron" | "trigger" | "agent";
   /**
    * Optional per-run model override (a model id valid on the chat's backend).
    * When set and resolvable, the turn runs on this model instead of the chat's
