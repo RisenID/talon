@@ -30,6 +30,7 @@
  */
 
 import { execFile } from "node:child_process";
+import { checkpointBeforeUpdate } from "../backup/index.js";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -247,6 +248,8 @@ export async function runSelfUpdate(
   if (!changed) {
     return { ok: true, repoRoot, steps, before, after, changed: false };
   }
+
+  await checkpointBeforeUpdate(before, after);
 
   const install = await record(
     "npm install",
