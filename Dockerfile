@@ -59,6 +59,40 @@ CMD ["node", "--import", "tsx", "src/index.ts"]
 FROM base-${RUNTIME} AS runtime
 WORKDIR /app
 
+# Tools the agent CLIs shell out to for their built-in tools: the
+# Antigravity `agy` backend needs git + ripgrep on PATH (docker/agy-test
+# carries the same set), and the Claude Code CLI uses them too when
+# present. ca-certificates keeps outbound HTTPS working on both bases;
+# curl is here for the optional agy download below.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+       ca-certificates curl git ripgrep \
+  && rm -rf /var/lib/apt/lists/*
+
+# Antigravity CLI (`backend: "agy"`). Google ships it as a standalone
+# binary, not an npm package, so there is nothing for `npm ci` to pull.
+# Two ways in, both landing at /usr/local/bin/agy (on PATH, which is where
+# the backend looks by default):
+#   1. Bake it in:  --build-arg AGY_DOWNLOAD_URL=<url of the linux binary
+#      for this platform> --build-arg AGY_SHA256=<its sha256>. The digest
+#      is checked; a mismatch fails the build.
+#   2. Bind-mount a host binary at run time — docker-compose.agy.yml.
+# Either way the OAuth sign-in lives in ~/.gemini, mounted at run time
+# (see docker-compose.agy.yml and docs/docker.md).
+ARG AGY_DOWNLOAD_URL=""
+ARG AGY_SHA256=""
+RUN set -eu; \
+  if [ -n "$AGY_DOWNLOAD_URL" ]; then \
+    curl -fsSL "$AGY_DOWNLOAD_URL" -o /tmp/agy; \
+    if [ -n "$AGY_SHA256" ]; then \
+      echo "$AGY_SHA256  /tmp/agy" | sha256sum -c -; \
+    else \
+      echo "WARNING: AGY_SHA256 not set — the agy download is unverified" >&2; \
+    fi; \
+    install -m 0755 /tmp/agy /usr/local/bin/agy; \
+    rm -f /tmp/agy; \
+  fi
+
 COPY --from=deps --chown=1000:1000 /app/node_modules ./node_modules
 
 # package.json is required at runtime, not just for the install: its
@@ -79,7 +113,7 @@ COPY --chown=1000:1000 bin/ bin/
 RUN set -eux; \
   claude_bin="$(ls -d /app/node_modules/@anthropic-ai/claude-agent-sdk-linux-*/claude | head -n1)"; \
   ln -sf "$claude_bin" /usr/local/bin/claude; \
-  mkdir -p "$HOME/.talon"; \
+  mkdir -p "$HOME/.talon" "$HOME/.claude" "$HOME/.gemini"; \
   chown -R 1000:1000 "$HOME"
 
 USER 1000:1000

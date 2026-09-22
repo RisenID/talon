@@ -538,6 +538,8 @@ docker compose up -d
 
 A Node 24 + tsx image is kept as a fallback for one release cycle: `docker build --build-arg RUNTIME=node -t talon .` (or set `build.args.RUNTIME` in `docker-compose.yml`). Mount paths are the same for both. See [`packaging/README.md`](packaging/README.md#docker-image) for the build's details.
 
+The image is also ready for the **Antigravity (`agy`) backend**: add `-f docker-compose.agy.yml` to mount `~/.gemini` and the `agy` binary (or bake the binary in with `AGY_DOWNLOAD_URL` + `AGY_SHA256`). See [docs/docker.md](docs/docker.md#antigravity-agy-backend).
+
 **Systemd:** unit file at `packaging/systemd/talon.service` — copy to `/etc/systemd/system/`, set `User=` and `WorkingDirectory=`, then `systemctl enable --now talon`.
 
 **Health endpoint:** `GET http://localhost:19876/health` returns JSON with uptime, memory, queue depth, active sessions, and last activity timestamp.

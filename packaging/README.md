@@ -61,6 +61,15 @@ Notes on the build:
   serves either: the bind mounts (`~/.talon`, `~/.claude`) never move.
   Both base images ship an unprivileged UID 1000 (`bun` / `node`), which
   is the user the daemon runs as.
+- **Agent CLI tooling is in the runtime stage.** `git` and `ripgrep`
+  are installed because the Antigravity `agy` CLI shells out to them, and
+  Claude Code uses them when present. `agy` itself isn't on npm, so the
+  image takes it either baked in at build time (`--build-arg
+  AGY_DOWNLOAD_URL=… --build-arg AGY_SHA256=…`, digest-checked) or
+  bind-mounted at `/usr/local/bin/agy` at run time
+  (`docker-compose.agy.yml`). `~/.gemini` is pre-created, owned by UID 1000,
+  so a fresh named volume mounted there is writable. See
+  [`docs/docker.md`](../docs/docker.md#antigravity-agy-backend).
 
 ## Native launcher (`talon-driver`)
 
