@@ -249,6 +249,7 @@ The `native` frontend turns the daemon into a **client bridge** — a versioned 
 - **Local (desktop):** the app connects to a Talon on the same machine and launches one if needed (`TALON_FRONTEND_OVERRIDE=desktop`).
 - **Remote (mobile/LAN):** point the app at `host:port` + token; the bridge requires `Authorization: Bearer …` (or `?token=` on the SSE stream) whenever a token is set.
 - **Encryption:** off-loopback binds serve **HTTPS by default** with a persistent self-signed certificate (`~/.talon/keys/`); the companion pins its SHA-256 fingerprint on first connect and refuses any change afterwards. The daemon logs the fingerprint at startup and `/health` advertises it. Opt out (or in, on loopback) with `"tls": false` / `true` in the `native` section.
+- **From anywhere, certificate-only (Immich-style):** put your reverse proxy (Caddy, nginx, Traefik, Cloudflare Tunnel) in front with client-certificate auth; import the `.p12` in the companion, which also switches to your home-network address whenever it answers. Talon still authenticates with its token — see [docs/mtls.md](docs/mtls.md).
 
 The app **keeps itself up to date** — it watches this repo's releases and installs the next one itself (silently on a rooted/Shizuku phone, swap-and-relaunch on desktop; see [docs/companion-updates.md](docs/companion-updates.md)). It provides multi-chat history, live streaming with reasoning + tool-call visibility, per-chat model/effort/reset, and **settings sync** — read and change the daemon's own config (default model, display name, timezone, pulse/heartbeat/dream) and restart it. See [apps/companion/README.md](apps/companion/README.md).
 
@@ -529,13 +530,15 @@ Commands: `/model`, `/effort`, `/context`, `/status`, `/reset`, `/rename`, `/res
 
 ## Production
 
-**Docker:** the image runs the daemon on Bun (`bun src/index.ts`); `~/.talon` and `~/.claude` are bind-mounted from the host into the container's `HOME=/home/bun`.
+**Docker:** the image runs the daemon on Bun (`bun src/index.ts`); `~/.talon` and `~/.claude` are bind-mounted from the host into the container's `HOME=/home/bun`. Prebuilt images are on GHCR (`ghcr.io/dylanneve1/talon:latest`), and a first boot can be configured entirely from `TALON_*` environment variables — see **[docs/docker.md](docs/docker.md)** for the quick install, and **[docs/truenas.md](docs/truenas.md)** for a step-by-step TrueNAS SCALE install.
 
 ```bash
 docker compose up -d
 ```
 
 A Node 24 + tsx image is kept as a fallback for one release cycle: `docker build --build-arg RUNTIME=node -t talon .` (or set `build.args.RUNTIME` in `docker-compose.yml`). Mount paths are the same for both. See [`packaging/README.md`](packaging/README.md#docker-image) for the build's details.
+
+The image is also ready for the **Antigravity (`agy`) backend**: add `-f docker-compose.agy.yml` to mount `~/.gemini` and the `agy` binary (or bake the binary in with `AGY_DOWNLOAD_URL` + `AGY_SHA256`). See [docs/docker.md](docs/docker.md#antigravity-agy-backend).
 
 **Systemd:** unit file at `packaging/systemd/talon.service` — copy to `/etc/systemd/system/`, set `User=` and `WorkingDirectory=`, then `systemctl enable --now talon`.
 
