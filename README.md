@@ -530,7 +530,7 @@ Commands: `/model`, `/effort`, `/context`, `/status`, `/reset`, `/rename`, `/res
 
 ## Production
 
-**Docker:** the image runs the daemon on Bun (`bun src/index.ts`); `~/.talon` and `~/.claude` are bind-mounted from the host into the container's `HOME=/home/bun`.
+**Docker:** the image runs the daemon on Bun (`bun src/index.ts`); `~/.talon` and `~/.claude` are bind-mounted from the host into the container's `HOME=/home/bun`. Prebuilt images are on GHCR (`ghcr.io/dylanneve1/talon:latest`), and a first boot can be configured entirely from `TALON_*` environment variables — see **[docs/docker.md](docs/docker.md)** for the quick install, and **[docs/truenas.md](docs/truenas.md)** for a step-by-step TrueNAS SCALE install.
 
 ```bash
 docker compose up -d

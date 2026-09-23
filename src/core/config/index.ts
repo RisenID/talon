@@ -192,6 +192,16 @@ const nativeConfigSchema = z
      * working zero-config).
      */
     tls: z.boolean().optional(),
+    /**
+     * The URL other devices should dial, when it isn't the bind address —
+     * a container (Docker, TrueNAS) or anything behind NAT or a proxy,
+     * where the bridge only sees its internal IP. Used for pairing links,
+     * node installers and `/mesh`. e.g. "https://truenas.lan:19880".
+     */
+    publicUrl: z
+      .string()
+      .regex(/^https?:\/\/\S+$/, "native.publicUrl must be an http(s) URL")
+      .optional(),
   })
   .strict();
 

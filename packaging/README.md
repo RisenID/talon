@@ -61,6 +61,15 @@ Notes on the build:
   serves either: the bind mounts (`~/.talon`, `~/.claude`) never move.
   Both base images ship an unprivileged UID 1000 (`bun` / `node`), which
   is the user the daemon runs as.
+- **Entrypoint: `docker/entrypoint.sh`.** It checks that `HOME` and the
+  state mounts are writable, and on first boot runs
+  `docker/seed-config.mjs` to write `~/.talon/config.json` from `TALON_*`
+  env vars. It never overwrites an existing config. `ENTRYPOINT` is declared
+  in each base stage, because declaring it in the runtime stage would reset
+  the per-runtime `CMD`. The image runs under any UID (`HOME` is
+  world-writable, and TrueNAS's `apps`/568 has a passwd entry). CI
+  smoke-tests exactly that path. Guides: [`docs/docker.md`](../docs/docker.md),
+  [`docs/truenas.md`](../docs/truenas.md).
 - **Agent CLI tooling is in the runtime stage.** `git` and `ripgrep`
   are installed because the Antigravity `agy` CLI shells out to them, and
   Claude Code uses them when present. `agy` itself isn't on npm, so the

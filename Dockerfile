@@ -40,12 +40,18 @@ RUN rm -rf /app/node_modules/@anthropic-ai/claude-agent-sdk-linux-*-musl
 #
 # HOME is /home/bun in *both* so a single docker-compose.yml serves
 # either variant: the mount paths never move. Both base images ship an
-# unprivileged UID 1000 (`bun` / `node`), which is what the app runs as.
+# unprivileged UID 1000 (`bun` / `node`), which is what the app runs as
+# by default — any other UID works too (see the HOME permissions below).
+#
+# ENTRYPOINT is set here rather than in the runtime stage on purpose:
+# declaring an ENTRYPOINT in a stage resets the CMD it inherited, and the
+# CMD is what differs per runtime.
 
 FROM oven/bun:1 AS base-bun
 ENV TALON_RUNTIME=bun HOME=/home/bun
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD bun -e "fetch('http://127.0.0.1:19876/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"
+ENTRYPOINT ["/app/docker/entrypoint.sh"]
 CMD ["bun", "src/index.ts"]
 
 FROM node:24-slim AS base-node
@@ -53,6 +59,7 @@ ENV TALON_RUNTIME=node HOME=/home/bun
 RUN mkdir -p /home/bun && chown node:node /home/bun
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:19876/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"
+ENTRYPOINT ["/app/docker/entrypoint.sh"]
 CMD ["node", "--import", "tsx", "src/index.ts"]
 
 # ── runtime ───────────────────────────────────────────────────────────
@@ -102,6 +109,8 @@ COPY --chown=1000:1000 package.json tsconfig.json ./
 COPY --chown=1000:1000 src/ src/
 COPY --chown=1000:1000 prompts/ prompts/
 COPY --chown=1000:1000 bin/ bin/
+# Entrypoint + first-boot config seeding (TALON_* env → config.json).
+COPY --chown=1000:1000 --chmod=0755 docker/entrypoint.sh docker/seed-config.mjs docker/
 
 # `talon doctor`, `talon login claude`, and the interactive
 # `claude auth login` bootstrap documented in docker-compose.yml all want
@@ -114,7 +123,21 @@ RUN set -eux; \
   claude_bin="$(ls -d /app/node_modules/@anthropic-ai/claude-agent-sdk-linux-*/claude | head -n1)"; \
   ln -sf "$claude_bin" /usr/local/bin/claude; \
   mkdir -p "$HOME/.talon" "$HOME/.claude" "$HOME/.gemini"; \
-  chown -R 1000:1000 "$HOME"
+  chown -R 1000:1000 "$HOME"; \
+  chmod 0777 "$HOME" "$HOME/.talon" "$HOME/.claude" "$HOME/.gemini"
+
+# Arbitrary-UID support. NAS appliances run containers as their own app
+# user (TrueNAS: `user: "568:568"`, owner of the app's datasets), not as
+# the image's 1000. Everything persistent is bind-mounted and owned by that
+# user already, but some state lands directly in HOME (Claude Code's
+# ~/.claude.json, runtime caches), so HOME and the mount points are world-
+# writable. It's a single-user container, so that opens nothing. Talon
+# still locks its own files to 0600/0700 once it runs.
+#
+# TrueNAS's `apps` user (568) also gets a passwd entry: git and ssh look
+# the current user up and refuse to work for a UID that has none.
+RUN groupadd -g 568 apps \
+  && useradd -u 568 -g 568 -d /home/bun -M -s /bin/sh apps
 
 USER 1000:1000
 
@@ -123,6 +146,7 @@ USER 1000:1000
 # container restarts. See docker-compose.yml for the canonical layout.
 VOLUME /home/bun/.talon
 
-EXPOSE 19876
+# 19876: gateway + /health. 19880: native bridge (companion app, nodes).
+EXPOSE 19876 19880
 
 # CMD and HEALTHCHECK are inherited from the selected base stage.
